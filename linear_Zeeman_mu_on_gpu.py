@@ -4,14 +4,9 @@ from cupyx.scipy.fft import fft, ifft
 import scipy.constants as const
 import time
 
-start = time.time()
-# defining p
-c_spec = 0.0005264653090365891
-#p = c_spec * cp.array([1])
-p = cp.linspace(0, c_spec, 100)
-lenght_p = len(p)
-p = p.reshape(lenght_p, 1)
+harmonic_potential = False
 
+start = time.time()
 #properties of the grid
 N_points = 2**11 #number of gridpoints
 x = cp.arange(- N_points // 2, N_points // 2, 1) # spatial grid
@@ -19,8 +14,7 @@ k_array = 2*cp.pi*cp.fft.fftfreq(N_points, 1)  # momentum grid
 dk = cp.abs(k_array[1] - k_array[0]) # spacing in momentum space
 
 # define physical properties
-N_par = 100
- # number of particles
+N_par = 100  # number of particles
 m = 1.44*10**(-25) # atom mass
 l = 220e-6 # length of the system in meters
 n = N_par / N_points # particle density
@@ -41,29 +35,54 @@ c = 4*cp.pi*const.hbar**2/(3*m)*(a0+2*a2)/(2*cp.pi*a_HO**2) # density-density in
 c *= m *dx/ (const.hbar**2) # make unitless
 omega_parallel *= Tscale  #making frequency unitless
 
-# defining dimensionless interaction strenght and linear zeeman shift and chemical potential
+# defining magnetic potential p and interaction strenght c
 c = 0.017
-mu = 1.1 * c_spec * cp.ones([lenght_p, 1])
+mu_spec = c * (1/N_points)
+p = cp.linspace(0, 1.5*mu_spec, 100)
+lenght_p = len(p)
+p = p.reshape(lenght_p, 1)
+
+# defining dimensionless interaction strenght and linear zeeman shift and chemical potential
+mu = 0.8 * mu_spec * cp.ones([lenght_p, 1])
 
 # define potential
-def V(x):
-    return (omega_parallel * x)**2
+if harmonic_potential:
+    def V(x):
+        return (omega_parallel * x)**2
+else:
+    def V(x):
+        return 0 * x
 
 Vx = V(x) * cp.ones([lenght_p, 1]) 
 Lap = - k_array**2
 
 # define initial wavefunction
-def Psi_Initial_11(x):
-    return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))
+if (not harmonic_potential):
+    # define initial wavefunction
+    def Psi_Initial_11(x):
+        return cp.sqrt(N_par / (4 * N_points)) * cp.ones(N_points) * (1.1 + 0.0 * cp.random.random(N_points))
 
-def Psi_Initial_12(x):
-    return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))
+    def Psi_Initial_12(x):
+        return cp.sqrt(N_par / (4 * N_points)) * cp.ones(N_points) * (1.0 + 0.0 * cp.random.random(N_points))
 
-def Psi_Initial_21(x):
-    return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points)) 
+    def Psi_Initial_21(x):
+        return cp.sqrt(N_par / (4 * N_points)) * cp.ones(N_points) * (1.0 + 0.0 * cp.random.random(N_points))
 
-def Psi_Initial_22(x):
-    return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points)) 
+    def Psi_Initial_22(x):
+        return cp.sqrt(N_par / (4 * N_points)) * cp.ones(N_points) * (1.1 + 0.0 * cp.random.random(N_points))
+else:
+    # define initial wavefunction
+    def Psi_Initial_11(x):
+        return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))
+
+    def Psi_Initial_12(x):
+        return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))
+
+    def Psi_Initial_21(x):
+        return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points)) 
+
+    def Psi_Initial_22(x):
+        return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))  
 
 # normalize initial wavefunctions
 Psi_i_11 = Psi_Initial_11(x); Psi_i_12 = Psi_Initial_12(x); Psi_i_21 = Psi_Initial_21(x); Psi_i_22 = Psi_Initial_22(x)

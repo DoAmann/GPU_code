@@ -5,6 +5,8 @@ from cupyx.scipy.fft import fft, ifft
 import scipy.constants as const
 import time
 
+harmonic_potential = False
+
 def linear_Zeeman_groundstate(mu: float, p: cp.array, params):
     # defining p
     c_spec = 0.0005264653090365891
@@ -45,24 +47,42 @@ def linear_Zeeman_groundstate(mu: float, p: cp.array, params):
     c = 0.017
 
     # define potential
-    def V(x):
-        return (omega_parallel * x)**2
+    if harmonic_potential:
+        def V(x):
+            return (omega_parallel * x)**2
+    else:
+        def V(x):
+            return 0 * x
 
     Vx = V(x) * cp.ones([lenght_p, 1]) 
     Lap = - k_array**2
 
-    # define initial wavefunction
-    def Psi_Initial_11(x):
-        return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))
+    if (not harmonic_potential):
+        # define initial wavefunction
+        def Psi_Initial_11(x):
+            return cp.sqrt(N_par / (4 * N_points)) * cp.ones(N_points) * (1.1 + 0.05 * cp.random.random(N_points))
 
-    def Psi_Initial_12(x):
-        return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))
+        def Psi_Initial_12(x):
+            return cp.sqrt(N_par / (4 * N_points)) * cp.ones(N_points) * (1.0 + 0.05 * cp.random.random(N_points))
 
-    def Psi_Initial_21(x):
-        return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points)) 
+        def Psi_Initial_21(x):
+            return cp.sqrt(N_par / (4 * N_points)) * cp.ones(N_points) * (1.0 + 0.05 * cp.random.random(N_points))
 
-    def Psi_Initial_22(x):
-        return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points)) 
+        def Psi_Initial_22(x):
+            return cp.sqrt(N_par / (4 * N_points)) * cp.ones(N_points) * (1.1 + 0.05 * cp.random.random(N_points))
+    else:
+        # define initial wavefunction
+        def Psi_Initial_11(x):
+            return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))
+
+        def Psi_Initial_12(x):
+            return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points))
+
+        def Psi_Initial_21(x):
+            return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points)) 
+
+        def Psi_Initial_22(x):
+            return cp.exp(- x**2 / (2 * sigma**2)) * (1 + 0.05 * cp.random.random(N_points)) 
 
     # normalize initial wavefunctions
     Psi_i_11 = Psi_Initial_11(x); Psi_i_12 = Psi_Initial_12(x); Psi_i_21 = Psi_Initial_21(x); Psi_i_22 = Psi_Initial_22(x)
@@ -93,7 +113,7 @@ def linear_Zeeman_groundstate(mu: float, p: cp.array, params):
     dt = params[0]; c_pre = params[1];               #stepsize and parameter for preconditioner
     Restart = params[2]                    #for the condition of restarting
     restarts = cp.zeros([lenght_p, 1])                    #for counting the number of restarts
-    ITER = 30000                     #number of maximal iterations
+    ITER = params[3]                     #number of maximal iterations
     tol=10**(-11)                   #tolerance
     jj = 0; ii = cp.zeros([lenght_p, 1]); i = 0 
     e_total = cp.ones(4)
@@ -180,22 +200,22 @@ def linear_Zeeman_groundstate(mu: float, p: cp.array, params):
     F_z = cp.real(F_z) 
     
     # if Nparticles < 1 -> F_z = 0, Psi = 0
-    mask2 = (cp.round(Nparticles, 6)[:, 0] < 1) 
-    F_z[mask2, :] = 0
+    #mask2 = (cp.round(Nparticles, 6)[:, 0] < 1) 
+    #F_z[mask2, :] = 0
 
     Magnetisation_per_N = cp.sum(F_z, axis = 1) / Nparticles.T
 
-    for arr in [rho_max, Nparticles]:
-        arr[mask2, 0] = 0
+    #for arr in [rho_max, Nparticles]:
+        #arr[mask2, 0] = 0
 
     return F_perp.get(), F_z.get(), mu.get(), p.get(), rho_max.get(), Magnetisation_per_N.get(), Nparticles.get()
 
 # special chemical potential
-c_spec = 0.0005264653090365891
+c_spec = 0.017 * (1/2**11)
 
 # define parameter in physical units
-mu_zeeman_list = cp.linspace(1/2 * c_spec, 1.3 * c_spec, 200)
-p_list = cp.linspace(-0.5*c_spec, 0.5*c_spec, 200)
+mu_zeeman_list = cp.linspace(0.5 * c_spec, 1.5 * c_spec, 200)
+p_list = cp.linspace(-2*c_spec, 2*c_spec, 200)
 
 # arrays to collect results
 rho_max_array = []
@@ -206,8 +226,15 @@ Magnetisation_per_N_array = []
 
 start = time.time()
 
+i = 0
 for mu_val in mu_zeeman_list:
-    params = cp.array([0.55, 4, 2000])
+    if (mu_val > 0.95* c_spec) and (mu_val < 1.05 * c_spec):
+        if (mu_val > 0.98* c_spec) and (mu_val < 1.02 * c_spec):
+            params = cp.array([0.55, 4, 2000, 250000])
+        else:
+            params = cp.array([0.55, 4, 2000, 150000])
+    else:
+        params = cp.array([0.55, 4, 2000, 90000])
     F_perp_result, F_z, mu_result, p_result, rho_max, Magnetisation_per_N, Nparticles = linear_Zeeman_groundstate(mu_val, p_list, params)
     
     mu_array.append(mu_result)
@@ -215,11 +242,26 @@ for mu_val in mu_zeeman_list:
     Magnetisation_per_N_array.append(Magnetisation_per_N)
     rho_max_array.append(rho_max)
 
+    # saving intermediate results
+    i += 1
+
+    if i % 10 == 0:
+        np.savez("Phasediagram_mu_without_V_no_mask2.npz", 
+         rho_max=np.array(rho_max_array),
+         Magnetisation_per_N=np.array(Magnetisation_per_N_array),
+         p=p_result,
+         mu=np.array(mu_array),
+         N_par=np.array(Nparticles_array))
+        
+        # showing progress
+        print(f"saved data for mu = {mu_val}")
+
+
 end = time.time()
 print("Dauer =", end - start)
 
 # saving data
-np.savez("meine_simulationsergebnisse2.npz", 
+np.savez("Phasediagram_mu_without_V_no_mask2.npz", 
          rho_max=np.array(rho_max_array),
          Magnetisation_per_N=np.array(Magnetisation_per_N_array),
          p=p_result,
